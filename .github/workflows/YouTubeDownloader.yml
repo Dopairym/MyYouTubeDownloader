@@ -426,34 +426,51 @@ jobs:
               print(f'{"="*50}')
 
           else:
-              # Single video mode
-              vid_match = re.search(r'(?:v=|/)([\w-]{11})', U)
-              vid = vid_match.group(1) if vid_match else 'x'
+              # --- SINGLE VIDEO MODE (now uses the exact same title retrieval as search) ---
+              print('   📛 Fetching video info (same method as search mode)...')
               
-              # Get the video title
-              print('   📛 Fetching title...')
-              video_title = None
+              # Use --dump-json with the raw URL (just like search uses --flat-playlist, but for a single video)
               try:
                   r = subprocess.run(
-                      ['yt-dlp', '--get-title', '--no-warnings', '--no-check-certificate',
-                       f'https://youtube.com/watch?v={vid}'],
-                      capture_output=True, text=True, timeout=10
+                      ['yt-dlp', '--dump-json', '--no-warnings', '--no-check-certificate', U],
+                      capture_output=True, text=True, timeout=15
                   )
                   if r.returncode == 0 and r.stdout.strip():
-                      video_title = r.stdout.strip()
+                      d = json.loads(r.stdout)
+                  else:
+                      d = {}
               except Exception as e:
-                  print(f'   ⚠️ Could not get title: {e}')
+                  print(f'   ⚠️ yt-dlp error: {e}')
+                  d = {}
+              
+              # Extract video ID and title exactly like search mode does (key 'title')
+              vid = d.get('id', '')
+              video_title = d.get('title', '')  # same field used in search
+              if not vid:
+                  # Fallback ID extraction from URL
+                  vid_match = re.search(r'(?:v=|/)([\w-]{11})', U)
+                  vid = vid_match.group(1) if vid_match else 'x'
               if not video_title:
-                  video_title = vid  # fallback to video ID
+                  # If title still empty, fallback to video ID (should not happen)
+                  video_title = vid
+              
               safe_title = sanitize_filename(video_title)
-              if not safe_title:   # edge case if sanitization empties the string
+              if not safe_title:
                   safe_title = f'video_{vid}'
-              
               print(f'   📺 Title: {video_title[:80]}')
+              if safe_title == vid:
+                  print(f'   ⚠️ Title could not be retrieved, using ID as filename.')
               
-              # Get channel from the video itself
-              ch, _, _, handle = gv(vid)
-              cn = handle if handle else get_channel_from_url(U) or safe_name(ch, 30) or 'video'
+              # Get channel info (same as before)
+              channel = d.get('channel') or d.get('uploader') or d.get('uploader_id') or 'Unknown'
+              channel_url = d.get('channel_url', '') or d.get('uploader_url', '')
+              handle = None
+              if channel_url:
+                  m = re.search(r'@([\w-]+)', channel_url)
+                  if m: handle = m.group(1)
+              if not handle:
+                  handle = safe_name(channel, 30) if channel and channel != 'Unknown' else None
+              cn = handle if handle else get_channel_from_url(U) or safe_name(channel, 30) or 'video'
               
               result = dl_video(U)
               if result:
