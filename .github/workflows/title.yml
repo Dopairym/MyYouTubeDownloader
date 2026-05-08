@@ -18,14 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: ⚡ Install yt-dlp
-        run: pip install -q yt-dlp
-
-      - name: 🔍 Get video title
+      - name: 🌐 Get video title via oEmbed
         run: |
           URL="${{ github.event.inputs.url }}"
           echo "Fetching title for: $URL"
-          TITLE=$(yt-dlp --get-title --no-warnings --no-check-certificate "$URL")
+          
+          # Use YouTube's oEmbed endpoint – safe, no auth needed
+          TITLE=$(curl -s "https://www.youtube.com/oembed?url=${URL}&format=json" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
+          
           echo "Title: $TITLE"
           echo "$TITLE" > title.txt
 
