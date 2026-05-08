@@ -426,53 +426,53 @@ jobs:
               print(f'{"="*50}')
 
           else:
-              # --- SINGLE VIDEO MODE (now uses the exact same title retrieval as search) ---
-              print('   📛 Fetching video info (same method as search mode)...')
+              # ---- SINGLE VIDEO MODE ----
+              # Use the same oEmbed method as the working title‑getter action
+              print('   📛 Fetching title via oEmbed...')
               
-              # Use --dump-json with the raw URL (just like search uses --flat-playlist, but for a single video)
-              try:
-                  r = subprocess.run(
-                      ['yt-dlp', '--dump-json', '--no-warnings', '--no-check-certificate', U],
-                      capture_output=True, text=True, timeout=15
-                  )
-                  if r.returncode == 0 and r.stdout.strip():
-                      d = json.loads(r.stdout)
-                  else:
-                      d = {}
-              except Exception as e:
-                  print(f'   ⚠️ yt-dlp error: {e}')
-                  d = {}
-              
-              # Extract video ID and title exactly like search mode does (key 'title')
-              vid = d.get('id', '')
-              video_title = d.get('title', '')  # same field used in search
+              # Build a clean YouTube URL from whatever was provided
+              # (oEmbed needs a youtube.com/watch?v= URL)
+              vid_match = re.search(r'(?:v=|/)([\w-]{11})', U)
+              vid = vid_match.group(1) if vid_match else None
               if not vid:
-                  # Fallback ID extraction from URL
-                  vid_match = re.search(r'(?:v=|/)([\w-]{11})', U)
-                  vid = vid_match.group(1) if vid_match else 'x'
+                  print('❌ Could not extract video ID from URL')
+                  sys.exit(1)
+              watch_url = f'https://www.youtube.com/watch?v={vid}'
+              oembed_url = f'https://www.youtube.com/oembed?url={watch_url}&format=json'
+              
+              video_title = None
+              try:
+                  resp = rq.get(oembed_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+                  if resp.status_code == 200:
+                      data = resp.json()
+                      video_title = data.get('title', '')
+              except Exception as e:
+                  print(f'   ⚠️ oEmbed failed: {e}')
+              
               if not video_title:
-                  # If title still empty, fallback to video ID (should not happen)
-                  video_title = vid
+                  video_title = vid  # fallback to ID if everything fails
               
               safe_title = sanitize_filename(video_title)
               if not safe_title:
                   safe_title = f'video_{vid}'
+              
               print(f'   📺 Title: {video_title[:80]}')
               if safe_title == vid:
-                  print(f'   ⚠️ Title could not be retrieved, using ID as filename.')
+                  print('   ⚠️ Falling back to video ID as filename')
               
-              # Get channel info (same as before)
-              channel = d.get('channel') or d.get('uploader') or d.get('uploader_id') or 'Unknown'
-              channel_url = d.get('channel_url', '') or d.get('uploader_url', '')
-              handle = None
-              if channel_url:
-                  m = re.search(r'@([\w-]+)', channel_url)
-                  if m: handle = m.group(1)
-              if not handle:
-                  handle = safe_name(channel, 30) if channel and channel != 'Unknown' else None
-              cn = handle if handle else get_channel_from_url(U) or safe_name(channel, 30) or 'video'
+              # Channel folder: try oEmbed author_name or keep previous heuristic
+              channel_name = 'Unknown'
+              try:
+                  # oEmbed also gives author_name (the channel)
+                  if 'data' in locals() and data:
+                      channel_name = data.get('author_name', 'Unknown')
+              except: pass
               
-              result = dl_video(U)
+              # Fallback: use channel detection from URL or video info
+              ch, _, _, handle = gv(vid)
+              cn = handle if handle else get_channel_from_url(U) or safe_name(ch, 30) or 'video'
+              
+              result = dl_video(watch_url)
               if result:
                   cd = Path(f'downloads/{cn}_videos')
                   cd.mkdir(parents=True, exist_ok=True)
