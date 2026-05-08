@@ -1,0 +1,38 @@
+name: 🏷️ Get YouTube Title
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: '🎬 YouTube video URL'
+        required: true
+        type: string
+
+jobs:
+  get-title:
+    name: 📛 Fetch title → title.txt
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ⚡ Install yt-dlp
+        run: pip install -q yt-dlp
+
+      - name: 🔍 Get video title
+        run: |
+          URL="${{ github.event.inputs.url }}"
+          echo "Fetching title for: $URL"
+          TITLE=$(yt-dlp --get-title --no-warnings --no-check-certificate "$URL")
+          echo "Title: $TITLE"
+          echo "$TITLE" > title.txt
+
+      - name: 📤 Push title.txt
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "bot@github.com"
+          git add title.txt
+          git diff --cached --quiet || git commit -m "📛 Update title.txt"
+          git push
