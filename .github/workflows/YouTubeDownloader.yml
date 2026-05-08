@@ -118,6 +118,17 @@ jobs:
                   safe = hashlib.md5(text.encode()).hexdigest()[:8]
               return safe
 
+          def sanitize_filename(name):
+              """Make a string safe for filenames across OSes."""
+              # Replace characters forbidden in Windows/Linux filenames with underscore
+              name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
+              # Collapse multiple spaces/underscores into a single underscore
+              name = re.sub(r'[\s_]+', '_', name)
+              name = name.strip('._')
+              if len(name) > 100:
+                  name = name[:100].rstrip('._')
+              return name
+
           def fm(n):
               if not n: return 'N/A'
               try:
@@ -419,6 +430,27 @@ jobs:
               vid_match = re.search(r'(?:v=|/)([\w-]{11})', U)
               vid = vid_match.group(1) if vid_match else 'x'
               
+              # Get the video title
+              print('   📛 Fetching title...')
+              video_title = None
+              try:
+                  r = subprocess.run(
+                      ['yt-dlp', '--get-title', '--no-warnings', '--no-check-certificate',
+                       f'https://youtube.com/watch?v={vid}'],
+                      capture_output=True, text=True, timeout=10
+                  )
+                  if r.returncode == 0 and r.stdout.strip():
+                      video_title = r.stdout.strip()
+              except Exception as e:
+                  print(f'   ⚠️ Could not get title: {e}')
+              if not video_title:
+                  video_title = vid  # fallback to video ID
+              safe_title = sanitize_filename(video_title)
+              if not safe_title:   # edge case if sanitization empties the string
+                  safe_title = f'video_{vid}'
+              
+              print(f'   📺 Title: {video_title[:80]}')
+              
               # Get channel from the video itself
               ch, _, _, handle = gv(vid)
               cn = handle if handle else get_channel_from_url(U) or safe_name(ch, 30) or 'video'
@@ -427,7 +459,7 @@ jobs:
               if result:
                   cd = Path(f'downloads/{cn}_videos')
                   cd.mkdir(parents=True, exist_ok=True)
-                  fp = cd / f'v_{vid}.{result["e"]}'
+                  fp = cd / f'{safe_title}.{result["e"]}'
                   size = download_file(result['u'], fp)
                   if size:
                       print(f'✅ Saved to {cn}_videos/ ({size/1e6:.1f}MB)')
