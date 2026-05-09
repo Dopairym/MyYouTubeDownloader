@@ -1,0 +1,70 @@
+name: 📦 Archive.org Bulk Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: '🌐 Archive.org URL (details or download page)'
+        required: true
+        type: string
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🧹 Setup
+        run: |
+          echo "Runner has full internet access."
+          # wget is already installed
+
+      - name: 🔗 Convert URL to download directory
+        id: url
+        run: |
+          INPUT="${{ github.event.inputs.url }}"
+          # Remove trailing slash
+          INPUT="${INPUT%/}"
+          
+          # Automatically convert /details/ID  --> /download/ID/
+          if echo "$INPUT" | grep -q '/details/'; then
+            ID=$(echo "$INPUT" | sed -n 's|.*/details/\([^/]*\).*|\1|p')
+            DOWNLOAD_URL="https://archive.org/download/${ID}/"
+          # If already /download/ID , make sure it ends with /
+          elif echo "$INPUT" | grep -q '/download/'; then
+            DOWNLOAD_URL="${INPUT%/}/"
+          else
+            echo "Invalid URL format. Use a /details/ or /download/ link."
+            exit 1
+          fi
+          
+          echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+          echo "Download from: $DOWNLOAD_URL"
+
+      - name: 📥 Mirror all files
+        run: |
+          URL="${{ steps.url.outputs.download_url }}"
+          ITEM_NAME=$(echo "$URL" | sed -n 's|.*/download/\([^/]*\)/.*|\1|p')
+          [ -z "$ITEM_NAME" ] && ITEM_NAME="downloaded_files"
+          
+          mkdir -p "archive/$ITEM_NAME"
+          
+          # Mirror the directory, skipping the parent directory prefix
+          # -r recursive, -np no-parent, -nH no host dirs, --cut-dirs=2 to remove /download/ID/
+          # -P sets output prefix, -R rejects index.html* (optional)
+          wget -q -r -np -nH --cut-dirs=2 -P "archive/$ITEM_NAME" \
+               -R "index.html*" "$URL" || true
+          
+          echo "Downloaded into archive/$ITEM_NAME"
+          ls -la "archive/$ITEM_NAME"
+
+      - name: 📤 Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "bot@github.com"
+          git add archive/
+          git diff --cached --quiet || git commit -m "📥 Archive download: ${{ steps.url.outputs.download_url }}"
+          git push
