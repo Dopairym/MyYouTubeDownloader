@@ -1,0 +1,50 @@
+name: Create File List
+
+on:
+  workflow_dispatch:
+    inputs:
+      folder:
+        description: 'Select a folder inside archive/'
+        required: true
+        type: choice
+        # Dynamically populated? See note below.
+        options:
+          - folder_a
+          - folder_b
+          - folder_c
+        # If you have many folders, use a string input instead
+        # type: string
+        # description: 'Enter the folder path (e.g., archive/old_assets)'
+
+jobs:
+  create-list:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # Allows pushing commits
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate file list
+        run: |
+          FOLDER="${{ github.event.inputs.folder }}"
+          OUT_DIR="todelete"
+          mkdir -p "$OUT_DIR"
+
+          # Timestamp to avoid name clashes
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          LISTFILE="$OUT_DIR/${FOLDER//\//_}_${TIMESTAMP}.txt"
+
+          # List all files (recursive) – skip directories
+          find "$FOLDER" -type f | sort > "$LISTFILE"
+
+          echo "List created: $LISTFILE"
+          echo "LISTFILE=$LISTFILE" >> $GITHUB_ENV
+
+      - name: Commit and push the list
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add "$LISTFILE"
+          git commit -m "Generate file list for ${{ github.event.inputs.folder }}" || echo "Nothing to commit"
+          git push
