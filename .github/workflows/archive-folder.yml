@@ -1,0 +1,64 @@
+name: Archive Folder to Release
+
+on:
+  workflow_dispatch:   # manual trigger
+
+jobs:
+  zip-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # required to create a release and upload assets
+
+    steps:
+      - name: Checkout repository (with LFS files)
+        uses: actions/checkout@v4
+        with:
+          lfs: true         # download real binary files, not LFS pointers
+
+      - name: Create ZIP
+        id: zip
+        run: |
+          TOARCHIVE="toarchive.txt"
+
+          if [ ! -f "$TOARCHIVE" ]; then
+            echo "Error: $TOARCHIVE not found in repo root. Create it first."
+            exit 1
+          fi
+
+          FOLDER=$(head -n 1 "$TOARCHIVE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          if [ -z "$FOLDER" ]; then
+            echo "Error: First line of $TOARCHIVE is empty."
+            exit 1
+          fi
+
+          if [ ! -d "$FOLDER" ]; then
+            echo "Error: Folder '$FOLDER' does not exist in the repository."
+            exit 1
+          fi
+
+          echo "Archiving: $FOLDER"
+
+          FOLDERNAME=$(basename "$FOLDER")
+          ZIPFILE="${FOLDERNAME}.zip"
+
+          # Create ZIP with one top-level folder
+          cd "$(dirname "$FOLDER")"
+          zip -rq "../../$ZIPFILE" "$FOLDERNAME"
+          cd -
+
+          ls -lh "$ZIPFILE"
+          echo "ZIPFILE=$ZIPFILE" >> $GITHUB_ENV
+          echo "FOLDERNAME=$FOLDERNAME" >> $GITHUB_ENV
+
+      - name: Create Release and Upload ZIP
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: archive-${{ env.FOLDERNAME }}-${{ github.run_id }}
+          name: "Archive: ${{ env.FOLDERNAME }}"
+          body: |
+            ZIP archive of folder `${{ github.event.inputs.folder || env.FOLDERNAME }}`
+            Generated on ${{ github.event.repository.updated_at }}
+          files: ${{ env.ZIPFILE }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
