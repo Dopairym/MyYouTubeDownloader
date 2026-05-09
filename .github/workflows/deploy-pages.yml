@@ -1,15 +1,16 @@
 name: 🚀 Deploy File Manager
 
 on:
-  workflow_dispatch:   # manual trigger
+  workflow_dispatch:
   push:
     paths:
-      - 'index.html'  # auto-deploy if you update the HTML
+      - 'index.html'
 
+# ✅ These permissions are mandatory
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: read          # to read the repo
+  pages: write            # to deploy to Pages
+  id-token: write         # for GitHub's OIDC token
 
 jobs:
   deploy:
@@ -17,13 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 📤 Upload to Pages
+      # ✅ This step is required – it sets up the Pages environment
+      - name: Setup Pages
         uses: actions/configure-pages@v4
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '.'        # upload everything from repo root
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
