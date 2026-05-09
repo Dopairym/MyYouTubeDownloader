@@ -1,35 +1,246 @@
-name: 🚀 Deploy File Manager
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Repo File Manager</title>
+<style>
+:root { --bg: #0d1117; --card: #161b22; --text: #c9d1d9; --accent: #58a6ff; --danger: #f85149; --border: #30363d; }
+body { font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1rem; }
+header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+input, button, select { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 0.5rem 0.75rem; border-radius: 6px; }
+button { cursor: pointer; }
+button:hover { opacity: 0.8; }
+.accent { background: var(--accent); color: #fff; border: none; }
+.danger { background: var(--danger); color: #fff; border: none; }
+#path { flex: 1; min-width: 200px; }
+#explorer { margin-top: 1rem; }
+.item { display: flex; align-items: center; padding: 0.5rem; border-bottom: 1px solid var(--border); gap: 0.5rem; }
+.item:hover { background: #1c2128; }
+.item .name { flex: 1; word-break: break-all; }
+.item .actions { display: flex; gap: 0.5rem; }
+#playerContainer { margin: 1rem 0; }
+video { max-width: 100%; background: #000; }
+footer { margin-top: 2rem; font-size: 0.85rem; color: #8b949e; }
+.hidden { display: none; }
+.error { color: var(--danger); }
+</style>
+</head>
+<body>
+<header>
+  <h2>📁 Repo Explorer</h2>
+  <button onclick="logout()" class="danger">Logout</button>
+</header>
 
-on:
-  workflow_dispatch:
-  push:
-    paths:
-      - 'index.html'
+<div id="authSection">
+  <label>GitHub Token: <input type="password" id="tokenInput" placeholder="ghp_..."></label>
+  <button onclick="saveToken()" class="accent">Login</button>
+</div>
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+<div id="mainSection" class="hidden">
+  <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:1rem;">
+    <button onclick="navigate('..')">⬆ Up</button>
+    <input id="path" type="text" placeholder="e.g. downloads/SOaDMezmerize_videos/" value="" />
+    <button onclick="navigateToPath()" class="accent">Go</button>
+    <button onclick="newFolder()">📂 New Folder</button>
+    <input type="file" id="uploadInput" style="display:none" onchange="uploadFile(this.files)" />
+    <button onclick="document.getElementById('uploadInput').click()">⬆ Upload</button>
+  </div>
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  <div id="playerContainer" class="hidden">
+    <video id="videoPlayer" controls></video>
+    <button onclick="closePlayer()">Close Player</button>
+  </div>
 
-      - name: 📄 Replace placeholders (optional)
-        run: |
-          sed -i "s|\${{ secrets.GH_USER }}|${{ github.repository_owner }}|g" index.html
-          sed -i "s|\${{ secrets.GH_REPO }}|${{ github.event.repository.name }}|g" index.html
-          sed -i "s|\${{ secrets.GH_BRANCH }}|${{ github.ref_name }}|g" index.html
+  <div id="explorer"></div>
+</div>
 
-      - name: 📤 Upload to Pages
-        uses: actions/configure-pages@v4
+<footer>
+  Using token stored in browser only. All operations go through GitHub API.
+</footer>
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: '.'
+<script>
+const owner = '{{REPO_OWNER}}';
+const repo = '{{REPO_NAME}}';
+const defaultBranch = '{{BRANCH}}';
 
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
+let token = localStorage.getItem('gh_token');
+let currentPath = '';
+
+if (token) {
+  document.getElementById('authSection').classList.add('hidden');
+  document.getElementById('mainSection').classList.remove('hidden');
+  navigate('');
+} else {
+  document.getElementById('authSection').classList.remove('hidden');
+  document.getElementById('mainSection').classList.add('hidden');
+}
+
+function saveToken() {
+  const t = document.getElementById('tokenInput').value.trim();
+  if (!t) return alert('Paste your token.');
+  localStorage.setItem('gh_token', t);
+  token = t;
+  document.getElementById('authSection').classList.add('hidden');
+  document.getElementById('mainSection').classList.remove('hidden');
+  navigate('');
+}
+
+function logout() {
+  localStorage.removeItem('gh_token');
+  token = null;
+  location.reload();
+}
+
+async function api(endpoint, method = 'GET', body = null) {
+  const headers = {
+    'Authorization': `token ${token}`,
+    'Accept': 'application/vnd.github.v3+json'
+  };
+  if (body) headers['Content-Type'] = 'application/json';
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/${endpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+async function listDir(path) {
+  if (path.startsWith('/')) path = path.slice(1);
+  if (path && !path.endsWith('/')) path += '/';
+  // use Git Trees API to list all items
+  const url = `git/trees/${defaultBranch}?recursive=1`;
+  const tree = await api(url);
+  // filter items that start with path, but are direct children
+  const prefix = path;
+  const items = tree.tree.filter(item => {
+    if (prefix && !item.path.startsWith(prefix)) return false;
+    if (prefix && item.path === prefix) return false;
+    const relative = prefix ? item.path.slice(prefix.length) : item.path;
+    return !relative.includes('/'); // only direct children
+  });
+  renderList(items, prefix);
+}
+
+async function deleteFile(path) {
+  // need the sha
+  const item = await api(`contents/${path}`);
+  const sha = item.sha;
+  await api(`contents/${path}`, 'DELETE', { message: `Delete ${path}`, sha });
+  navigate(currentPath);
+}
+
+async function renderList(items, prefix) {
+  const explorer = document.getElementById('explorer');
+  explorer.innerHTML = '';
+  const folders = items.filter(i => i.type === 'tree');
+  const files = items.filter(i => i.type === 'blob');
+  const all = [...folders.sort(), ...files.sort()];
+
+  for (const item of all) {
+    const div = document.createElement('div');
+    div.className = 'item';
+    const icon = item.type === 'tree' ? '📁' : '📄';
+    const name = prefix ? item.path.slice(prefix.length) : item.path;
+    div.innerHTML = `<span class="name">${icon} ${name}</span>`;
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    if (item.type === 'tree') {
+      const openBtn = document.createElement('button');
+      openBtn.textContent = 'Open';
+      openBtn.onclick = () => navigate(prefix + name);
+      actions.appendChild(openBtn);
+    } else {
+      const downloadBtn = document.createElement('button');
+      downloadBtn.textContent = 'Download';
+      downloadBtn.onclick = () => downloadFile(item.path);
+      actions.appendChild(downloadBtn);
+      if (/\.(mp4|webm|ogg|m4v|mkv|mov)$/i.test(name)) {
+        const playBtn = document.createElement('button');
+        playBtn.textContent = '▶ Play';
+        playBtn.onclick = () => playVideo(item.path);
+        actions.appendChild(playBtn);
+      }
+    }
+    const delBtn = document.createElement('button');
+    delBtn.textContent = 'Delete';
+    delBtn.className = 'danger';
+    delBtn.onclick = () => confirm(`Delete ${name}?`) && deleteFile(item.path);
+    actions.appendChild(delBtn);
+    div.appendChild(actions);
+    explorer.appendChild(div);
+  }
+}
+
+function navigate(dir) {
+  if (dir === '..') {
+    if (currentPath.includes('/')) {
+      const parts = currentPath.replace(/\/$/, '').split('/');
+      parts.pop();
+      currentPath = parts.join('/') + (parts.length ? '/' : '');
+    } else {
+      currentPath = '';
+    }
+  } else {
+    currentPath = dir;
+  }
+  document.getElementById('path').value = currentPath;
+  listDir(currentPath);
+}
+
+function navigateToPath() {
+  currentPath = document.getElementById('path').value;
+  listDir(currentPath);
+}
+
+function downloadFile(filePath) {
+  window.open(`https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${filePath}`, '_blank');
+}
+
+function playVideo(filePath) {
+  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${filePath}`;
+  const player = document.getElementById('videoPlayer');
+  player.src = rawUrl;
+  document.getElementById('playerContainer').classList.remove('hidden');
+  player.play();
+}
+
+function closePlayer() {
+  const player = document.getElementById('videoPlayer');
+  player.pause();
+  player.src = '';
+  document.getElementById('playerContainer').classList.add('hidden');
+}
+
+async function newFolder() {
+  const name = prompt('Folder name:');
+  if (!name) return;
+  const fullPath = currentPath ? `${currentPath}${name}` : name;
+  // create a .gitkeep to have folder in git
+  await api(`contents/${fullPath}/.gitkeep`, 'PUT', {
+    message: `Create folder ${name}`,
+    content: btoa('') // empty file
+  });
+  navigate(currentPath);
+}
+
+async function uploadFile(fileList) {
+  for (const file of fileList) {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const content = e.target.result.split(',')[1]; // base64 data
+      const fullPath = currentPath ? `${currentPath}${file.name}` : file.name;
+      await api(`contents/${fullPath}`, 'PUT', {
+        message: `Upload ${file.name}`,
+        content: content
+      });
+      navigate(currentPath);
+    };
+    reader.readAsDataURL(file);
+  }
+}
+</script>
+</body>
+</html>
