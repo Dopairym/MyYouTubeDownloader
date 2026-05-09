@@ -1,13 +1,13 @@
 name: Archive Folder to Release
 
 on:
-  workflow_dispatch:   # manual trigger
+  workflow_dispatch:   # manual trigger only
 
 jobs:
   zip-and-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # required to create a release and upload assets
+      contents: write      # required for managing releases and assets
 
     steps:
       - name: Checkout repository (with LFS files)
@@ -41,7 +41,7 @@ jobs:
           FOLDERNAME=$(basename "$FOLDER")
           ZIPFILE="${FOLDERNAME}.zip"
 
-          # Create ZIP with one top-level folder
+          # Create ZIP with exactly one top-level folder (the folder name)
           cd "$(dirname "$FOLDER")"
           zip -rq "../../$ZIPFILE" "$FOLDERNAME"
           cd -
@@ -50,14 +50,14 @@ jobs:
           echo "ZIPFILE=$ZIPFILE" >> $GITHUB_ENV
           echo "FOLDERNAME=$FOLDERNAME" >> $GITHUB_ENV
 
-      - name: Create Release and Upload ZIP
+      - name: Upload ZIP to the persistent 'Archives' release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: archive-${{ env.FOLDERNAME }}-${{ github.run_id }}
-          name: "Archive: ${{ env.FOLDERNAME }}"
+          tag_name: archives                   # permanent tag (release created if missing)
+          name: "Archives"                     # release title
           body: |
-            ZIP archive of folder `${{ github.event.inputs.folder || env.FOLDERNAME }}`
-            Generated on ${{ github.event.repository.updated_at }}
+            Collection of ZIP archives generated from `toarchive.txt`.
+            Latest addition: **${{ env.FOLDERNAME }}** (run ${{ github.run_id }})
           files: ${{ env.ZIPFILE }}
           fail_on_unmatched_files: true
         env:
