@@ -1,0 +1,59 @@
+name: Archive Folder to ZIP
+
+on:
+  workflow_dispatch:   # Run manually from the Actions tab
+
+jobs:
+  zipfolder:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # Allow pushing the ZIP file
+
+    steps:
+      - name: Checkout repository (with LFS files)
+        uses: actions/checkout@v4
+        with:
+          lfs: true         # Ensures real large files are downloaded, not LFS pointers
+
+      - name: Read folder path and create ZIP
+        id: zip
+        run: |
+          TOARCHIVE="toarchive.txt"
+
+          if [ ! -f "$TOARCHIVE" ]; then
+            echo "Error: $TOARCHIVE not found in repo root. Create it first."
+            exit 1
+          fi
+
+          # Read the first line (folder path)
+          FOLDER=$(head -n 1 "$TOARCHIVE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          if [ -z "$FOLDER" ]; then
+            echo "Error: First line of $TOARCHIVE is empty."
+            exit 1
+          fi
+
+          if [ ! -d "$FOLDER" ]; then
+            echo "Error: Folder '$FOLDER' does not exist in the repository."
+            exit 1
+          fi
+
+          echo "Archiving folder: $FOLDER"
+
+          ZIPNAME=$(basename "$FOLDER")
+          ZIPFILE="ziped/${ZIPNAME}.zip"
+          mkdir -p ziped
+
+          # Create the ZIP (recursive, silent)
+          zip -rq "$ZIPFILE" "$FOLDER"
+
+          echo "Created $ZIPFILE"
+          echo "ZIPFILE=$ZIPFILE" >> $GITHUB_ENV
+          echo "FOLDER=$FOLDER" >> $GITHUB_ENV
+
+      - name: Commit and push the ZIP
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add "$ZIPFILE"
+          git commit -m "Archive folder '$FOLDER' to ZIP" || echo "Nothing to commit"
+          git push
