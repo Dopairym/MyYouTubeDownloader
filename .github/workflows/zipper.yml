@@ -1,19 +1,19 @@
 name: Archive Folder to ZIP
 
 on:
-  workflow_dispatch:   # Run manually from the Actions tab
+  workflow_dispatch:   # manual trigger only
 
 jobs:
   zipfolder:
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # Allow pushing the ZIP file
+      contents: read    # no push needed – we use artifacts instead
 
     steps:
       - name: Checkout repository (with LFS files)
         uses: actions/checkout@v4
         with:
-          lfs: true         # Ensures real large files are downloaded, not LFS pointers
+          lfs: true      # download real LFS files, not pointers
 
       - name: Read folder path and create ZIP
         id: zip
@@ -25,7 +25,7 @@ jobs:
             exit 1
           fi
 
-          # Read the first line (folder path)
+          # Read the first line – the folder path
           FOLDER=$(head -n 1 "$TOARCHIVE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
           if [ -z "$FOLDER" ]; then
             echo "Error: First line of $TOARCHIVE is empty."
@@ -37,23 +37,24 @@ jobs:
             exit 1
           fi
 
-          echo "Archiving folder: $FOLDER"
+          echo "Archiving: $FOLDER"
 
-          ZIPNAME=$(basename "$FOLDER")
-          ZIPFILE="ziped/${ZIPNAME}.zip"
-          mkdir -p ziped
+          # Folder name for the top-level entry inside the ZIP
+          FOLDERNAME=$(basename "$FOLDER")
+          ZIPFILE="${FOLDERNAME}.zip"
 
-          # Create the ZIP (recursive, silent)
-          zip -rq "$ZIPFILE" "$FOLDER"
+          # Go into the parent directory so the ZIP has exactly "${FOLDERNAME}/" at the top
+          cd "$(dirname "$FOLDER")"
+          zip -rq "../../$ZIPFILE" "$FOLDERNAME"
+          cd -
 
           echo "Created $ZIPFILE"
           echo "ZIPFILE=$ZIPFILE" >> $GITHUB_ENV
-          echo "FOLDER=$FOLDER" >> $GITHUB_ENV
+          echo "FOLDERNAME=$FOLDERNAME" >> $GITHUB_ENV
 
-      - name: Commit and push the ZIP
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add "$ZIPFILE"
-          git commit -m "Archive folder '$FOLDER' to ZIP" || echo "Nothing to commit"
-          git push
+      - name: Upload ZIP as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ env.FOLDERNAME }}"
+          path: "${{ env.ZIPFILE }}"
+          retention-days: 30   # keep for 30 days (default is 90, max 90)
