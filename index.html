@@ -1,0 +1,35 @@
+name: 🚀 Deploy File Manager
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'index.html'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 📄 Replace placeholders (optional)
+        run: |
+          sed -i "s|\${{ secrets.GH_USER }}|${{ github.repository_owner }}|g" index.html
+          sed -i "s|\${{ secrets.GH_REPO }}|${{ github.event.repository.name }}|g" index.html
+          sed -i "s|\${{ secrets.GH_BRANCH }}|${{ github.ref_name }}|g" index.html
+
+      - name: 📤 Upload to Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
