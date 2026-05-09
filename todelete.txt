@@ -1,45 +1,34 @@
 archive/SOaDMezmerize
-01. Soldier Side - Intro.flac
 01. Soldier Side - Intro.mp3
 01. Soldier Side - Intro.png
 01. Soldier Side - Intro_spectrogram.png
-02. B.Y.O.B..flac
 02. B.Y.O.B..mp3
 02. B.Y.O.B..png
 02. B.Y.O.B._spectrogram.png
-03. Revenga.flac
 03. Revenga.mp3
 03. Revenga.png
 03. Revenga_spectrogram.png
-04. Cigaro.flac
 04. Cigaro.mp3
 04. Cigaro.png
 04. Cigaro_spectrogram.png
-05. Radio-Video.flac
 05. Radio-Video.mp3
 05. Radio-Video.png
 05. Radio-Video_spectrogram.png
-06. This Cocaine Makes Me Feel Like I-'m On This Song.flac
 06. This Cocaine Makes Me Feel Like I-'m On This Song.mp3
 06. This Cocaine Makes Me Feel Like I-'m On This Song.png
 06. This Cocaine Makes Me Feel Like I-'m On This Song_spectrogram.png
-07. Violent Pornography.flac
 07. Violent Pornography.mp3
 07. Violent Pornography.png
 07. Violent Pornography_spectrogram.png
-08. Question!.flac
 08. Question!.mp3
 08. Question!.png
 08. Question!_spectrogram.png
-09. Sad Statue.flac
 09. Sad Statue.mp3
 09. Sad Statue.png
 09. Sad Statue_spectrogram.png
-10. Old School Hollywood.flac
 10. Old School Hollywood.mp3
 10. Old School Hollywood.png
 10. Old School Hollywood_spectrogram.png
-11. Lost In Hollywood.flac
 11. Lost In Hollywood.mp3
 11. Lost In Hollywood.png
 11. Lost In Hollywood_spectrogram.png
