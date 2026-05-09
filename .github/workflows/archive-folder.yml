@@ -1,33 +1,32 @@
 name: Archive Folder to Release
 
 on:
-  workflow_dispatch:   # manual trigger only
+  workflow_dispatch:
+    inputs:
+      folder:
+        description: 'Folder path to archive (e.g., archive/SOaDMezmerize)'
+        required: true
+        type: string
 
 jobs:
   zip-and-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # required for managing releases and assets
+      contents: write      # needed to manage releases and assets
 
     steps:
       - name: Checkout repository (with LFS files)
         uses: actions/checkout@v4
         with:
-          lfs: true         # download real binary files, not LFS pointers
+          lfs: true         # fetch real binary files, not LFS pointers
 
       - name: Create ZIP
         id: zip
         run: |
-          TOARCHIVE="toarchive.txt"
+          FOLDER="${{ github.event.inputs.folder }}"
 
-          if [ ! -f "$TOARCHIVE" ]; then
-            echo "Error: $TOARCHIVE not found in repo root. Create it first."
-            exit 1
-          fi
-
-          FOLDER=$(head -n 1 "$TOARCHIVE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
           if [ -z "$FOLDER" ]; then
-            echo "Error: First line of $TOARCHIVE is empty."
+            echo "Error: No folder path provided."
             exit 1
           fi
 
@@ -53,10 +52,10 @@ jobs:
       - name: Upload ZIP to the persistent 'Archives' release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: archives                   # permanent tag (release created if missing)
-          name: "Archives"                     # release title
+          tag_name: archives        # permanent release (created automatically on first run)
+          name: "Archives"          # release title
           body: |
-            Collection of ZIP archives generated from `toarchive.txt`.
+            Collection of ZIP archives generated on demand.
             Latest addition: **${{ env.FOLDERNAME }}** (run ${{ github.run_id }})
           files: ${{ env.ZIPFILE }}
           fail_on_unmatched_files: true
