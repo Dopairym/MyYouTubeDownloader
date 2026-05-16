@@ -7,41 +7,54 @@ jobs:
   delete-folder-via-api:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # needed to push the new commit
+      contents: write
     steps:
-      - name: Delete the downloads folder using the GitHub API
+      - name: Delete downloads folder via GitHub API
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          BRANCH: ${{ github.ref_name }}   # or hardcode e.g. 'main'
+          BRANCH: ${{ github.ref_name }}
         run: |
-          # 1. Get the current commit SHA of the branch
-          SHA=$(gh api repos/$REPO/branches/$BRANCH --jq '.commit.sha')
+          set -e
+
+          echo "Branch: $BRANCH"
+
+          # 1. Get the latest commit SHA on the branch
+          SHA=$(gh api "repos/$REPO/branches/$BRANCH" --jq '.commit.sha')
           echo "Current commit: $SHA"
 
-          # 2. Get the full tree recursively
-          TREE_DATA=$(gh api repos/$REPO/git/trees/$SHA?recursive=1)
+          # 2. Fetch the full recursive tree
+          FULL_TREE=$(gh api "repos/$REPO/git/trees/$SHA?recursive=1")
+          
+          # 3. Remove all entries under downloads/ and keep only the needed fields
+          FILTERED_TREE=$(echo "$FULL_TREE" | jq '[.tree[] | select(.path | startswith("downloads/") | not) | {path, mode, type, sha}]')
 
-          # 3. Filter out any entries under the "downloads" folder
-          #    (including subfolders and files)
-          NEW_TREE=$(echo "$TREE_DATA" | jq '.tree | map(select(.path | startswith("downloads/") | not))')
+          echo "Filtered tree entry count: $(echo "$FILTERED_TREE" | jq length)"
 
-          # 4. Create a new tree object from the filtered entries
-          NEW_TREE_SHA=$(gh api repos/$REPO/git/trees \
-            --field "tree=$(echo "$NEW_TREE" | jq -c .)" \
-            --jq '.sha')
+          # 4. Write filtered tree to a file (safe from shell escaping)
+          echo "$FILTERED_TREE" > new_tree.json
+
+          # 5. Create a new tree object from the file
+          NEW_TREE_SHA=$(gh api "repos/$REPO/git/trees" --input new_tree.json --jq '.sha')
           echo "New tree SHA: $NEW_TREE_SHA"
 
-          # 5. Create a commit that points to the new tree
-          NEW_COMMIT_SHA=$(gh api repos/$REPO/git/commits \
+          # 6. If nothing changed (no downloads folder), skip the rest
+          OLD_TREE_SHA=$(echo "$FULL_TREE" | jq -r '.sha')
+          if [ "$NEW_TREE_SHA" = "$OLD_TREE_SHA" ]; then
+            echo "No 'downloads' folder found, nothing to do."
+            exit 0
+          fi
+
+          # 7. Create a new commit pointing to the new tree
+          NEW_COMMIT=$(gh api "repos/$REPO/git/commits" \
             --field "message=Remove downloads folder" \
             --field "tree=$NEW_TREE_SHA" \
             --field "parents[]=$SHA" \
             --jq '.sha')
-          echo "New commit SHA: $NEW_COMMIT_SHA"
+          echo "New commit SHA: $NEW_COMMIT"
 
-          # 6. Update the branch reference to the new commit
-          gh api repos/$REPO/git/refs/heads/$BRANCH \
-            --field "sha=$NEW_COMMIT_SHA" \
+          # 8. Fast-forward the branch to the new commit
+          gh api "repos/$REPO/git/refs/heads/$BRANCH" \
+            --field "sha=$NEW_COMMIT" \
             --field "force=false"
-          echo "Branch $BRANCH updated. downloads/ folder removed."
+          echo "Branch '$BRANCH' updated. 'downloads/' folder removed."
