@@ -1,0 +1,38 @@
+name: Remove downloads folder
+
+on:
+  workflow_dispatch:  # allows manual trigger
+
+permissions:
+  contents: write     # needed to push the deletion commit
+
+jobs:
+  remove-downloads:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # fetch all history so the push doesn't conflict (optional)
+          fetch-depth: 0
+
+      - name: Delete ~/downloads inside the repo
+        run: |
+          # Remove the downloads folder at the root of the repo (if it exists)
+          rm -rf downloads
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage the deletion
+          git add -A
+
+          # Only commit if there are changes
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Remove downloads folder"
+            git push
+          fi
